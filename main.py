@@ -1,8 +1,8 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from Db_models.mongo_setup import global_init
 from Db_models.models.masked import Masked
-from Db_models.models.unmasked import Unmasked
 from Db_models.models.suspicious import Suspicious
+from Db_models.models.user import UserModel
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
 from tensorflow.keras.models import load_model
@@ -10,6 +10,10 @@ import numpy as np
 import cv2
 import os
 import base64
+import globals
+import face_recognition
+import pickle
+from Db_models.models.penalty import PenaltyModel
 
 
 # load our serialized face detector model from disk
@@ -22,14 +26,38 @@ net = cv2.dnn.readNet(prototxtPath, weightsPath)
 print("[INFO] loading face mask detector model...")
 model = load_model("mask_detector.model")
 
-
-
 app = FastAPI()
 global_init()
 
+@app.post("/signup/")
+def register(file: UploadFile = File(...), user_name: str = Form(...)):
+    try:
+        UserModel.objects.get(user_name=user_name)
+        return False
+    except UserModel.DoesNotExist:
+        """If user_name not in db than error will be handled here """
+        user_model_obj = UserModel()
+        file_name = file.filename
+        with open(file_name, 'wb') as f:
+            f.write(file.file.read())
+        """face recognition code """
+        face_image = face_recognition.load_image_file(file_name)
+        face_encoding = face_recognition.face_encodings(face_image)[0]
+        """face recognition code complete"""
+        binary_encoding = pickle.dumps(face_encoding)
+        user_model_obj.user_name = user_name
+        user_model_obj.encoding = binary_encoding
+        """saving data in db through model ob of user"""
+        with open(file_name, 'rb') as fd:
+            user_model_obj.image.put(fd)
+        os.remove(file_name)
+        user_model_obj.save()
+        globals.add_to_embeddings(username=user_model_obj.user_name, encoding=face_encoding)
+        return True
+
 
 @app.post("/predict/")
-def predict(file: UploadFile = File(...)):
+def predict(file: UploadFile = File(...), location: str = Form(...)):
     file_name = file.filename
     with open(file_name, 'wb') as f:
         f.write(file.file.read())
@@ -100,22 +128,47 @@ def predict(file: UploadFile = File(...)):
         with open(file_name, 'rb') as fd:
             mask_model_obj.image= fd.read()
         os.remove(file_name)
+        mask_model_obj.location = location
         mask_model_obj.save()
         return result
     elif result == "No Mask":
-        unmask_model_obj = Unmasked()
-        with open(file_name, 'rb') as fd:
-            unmask_model_obj.image = fd.read()
+        embeddings = []
+        for dic in globals.embeddings:
+            embeddings.append(dic["encoding"])
+        face_image = face_recognition.load_image_file(file_name)
+
+        uname = None
+        """if face detection occurs than try else except"""
+        print(uname)
+        face_encoding = face_recognition.face_encodings(face_image)[0]
+        face_distances = face_recognition.face_distance(embeddings, face_encoding)
+        for i, face_distance in enumerate(face_distances):
+            if face_distance < 0.6:
+                user_dic = globals.embeddings[i]
+                uname = user_dic["name"]
+
+        if uname is None:
+            """if unknown person detected than return none"""
+            os.remove(file_name)
+        else:
+            penalty_model_obj = PenaltyModel()
+            penalty_model_obj.user_name = uname
+            penalty_model_obj.location = location
+            with open(file_name, 'rb') as fd:
+                penalty_model_obj.image.put(fd)
+
         os.remove(file_name)
-        unmask_model_obj.save()
+
         return result
     else:
         suspicious_model_obj = Suspicious()
         with open(file_name, 'rb') as fd:
             suspicious_model_obj.image = fd.read()
         os.remove(file_name)
+        suspicious_model_obj.location = location
         suspicious_model_obj.save()
         return result
+
 
 @app.get("/masked")
 def fetch(skip: int = 0):
@@ -132,20 +185,63 @@ def fetch(skip: int = 0):
         masked.append(mask_dict)
     return masked
 
-@app.get("/unmasked")
+
+@app.get("/penalty")
 def fetch(skip: int = 0):
     """pagination query param"""
     skip = skip * 10
     limit = skip + 10
-    unmasked = []
-    for unmask_model_obj in Unmasked.objects[skip:limit].order_by('-date'):
+    penalty_list = []
+    for penalty_model_obj in PenaltyModel.objects[skip:limit].order_by('-date'):
         """limiting results to fetch from db """
-        unmask_dict = dict()
-        unmask_dict["date"] = unmask_model_obj.date
-        unmask_dict["location"] = unmask_model_obj.location
-        unmask_dict["img"] = base64.b64encode(unmask_model_obj.image)
-        unmasked.append(unmask_dict)
-    return unmasked
+        penalty_dict = dict()
+        penalty_dict["date"] = penalty_model_obj.date
+        penalty_dict["location"] = penalty_model_obj.location
+        penalty_dict["img"] = base64.b64encode(penalty_model_obj.image)
+        penalty_list.append(penalty_dict)
+    return penalty_list
+
+
+@app.post("/signin")
+def signin(file: UploadFile = File(...)):
+    file_name = file.filename
+    with open(file_name, 'wb') as f:
+        f.write(file.file.read())
+    embeddings = []
+    for dic in globals.embeddings:
+        embeddings.append(dic["encoding"])
+    face_image = face_recognition.load_image_file(file_name)
+
+    uname = None
+    """if face detection occurs than try else except"""
+    print(uname)
+    face_encoding = face_recognition.face_encodings(face_image)[0]
+    face_distances = face_recognition.face_distance(embeddings, face_encoding)
+    for i, face_distance in enumerate(face_distances):
+        if face_distance < 0.6:
+            user_dic = globals.embeddings[i]
+            uname = user_dic["name"]
+
+    if uname is None:
+        """if unknown person detected than return none"""
+        os.remove(file_name)
+        return False
+    else:
+        return uname
+
+
+@app.get("/penalty_user")
+def penalty_user(user_name: str = 0):
+    penalties = PenaltyModel.objects(user_name=user_name)
+    penalty_list = []
+    for penalty in penalties:
+        penalty_dict = dict()
+        penalty_dict["date"] = penalty.date
+        penalty_dict["location"] = penalty.location
+        penalty_dict["img"] = base64.b64encode(penalty.image)
+        penalty_list.append(penalty_dict)
+    return penalties
+
 
 @app.get("/suspicious")
 def fetch(skip: int = 0):
