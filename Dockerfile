@@ -15,6 +15,10 @@ ADD requirements.txt .
 
 RUN pip install -r requirements.txt
 
-ADD . .
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
 
-CMD uvicorn main:app --reload
+RUN pip install opencv-python
+
+ADD . .
+EXPOSE 8000
+CMD uvicorn main:app --reload --host 0.0.0.0
