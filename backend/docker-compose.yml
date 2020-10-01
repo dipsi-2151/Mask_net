@@ -3,7 +3,7 @@ services:
     myapp:
         build: .
         container_name: "mask-net"
-        image: mask-net:latest
+        image: ghcr.io/jainal09/mask_net:latest
         command: uvicorn main:app --reload --host 0.0.0.0 
         ports:
             - 8000:8000
