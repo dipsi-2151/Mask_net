@@ -9,10 +9,16 @@ RUN apt-get install -y libopenblas-dev liblapack-dev
 
 RUN apt-get install -y libx11-dev libgtk-3-dev
 
+RUN pip install dlib
 
-ADD . .
+ADD requirements.txt .
 
 RUN pip install -r requirements.txt
 
+RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
 
-CMD uvicorn main:app --reload
+RUN pip install opencv-python
+
+ADD . .
+EXPOSE 8000
+CMD uvicorn main:app --reload --host 0.0.0.0

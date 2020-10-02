@@ -28,11 +28,13 @@ model = load_model("mask_detector.model")
 
 app = FastAPI()
 global_init()
+for user in UserModel.objects:
+    globals.add_to_embeddings(username=user.user_name, encoding=pickle.loads(user.encoding))
 
 @app.post("/signup/")
 def register(file: UploadFile = File(...), user_name: str = Form(...)):
     try:
-        UserModel.objects.get(user_name=user_name)
+        returning_user_object= UserModel.objects.get(user_name=user_name)
         return False
     except UserModel.DoesNotExist:
         """If user_name not in db than error will be handled here """
@@ -52,7 +54,6 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
             user_model_obj.image.put(fd)
         os.remove(file_name)
         user_model_obj.save()
-        globals.add_to_embeddings(username=user_model_obj.user_name, encoding=face_encoding)
         return True
 
 
@@ -115,7 +116,7 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
 
 
             cv2.putText(image, label, (startX, startY - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 2.0, color, 2)
             cv2.rectangle(image, (startX, startY), (endX, endY), color, 2)
             break
         else:
@@ -134,12 +135,11 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
     elif result == "No Mask":
         embeddings = []
         for dic in globals.embeddings:
+            print(dic["name"])
             embeddings.append(dic["encoding"])
         face_image = face_recognition.load_image_file(file_name)
-
         uname = None
         """if face detection occurs than try else except"""
-        print(uname)
         face_encoding = face_recognition.face_encodings(face_image)[0]
         face_distances = face_recognition.face_distance(embeddings, face_encoding)
         for i, face_distance in enumerate(face_distances):
@@ -151,13 +151,14 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
             """if unknown person detected than return none"""
             os.remove(file_name)
         else:
+            print("in else")
             penalty_model_obj = PenaltyModel()
             penalty_model_obj.user_name = uname
             penalty_model_obj.location = location
             with open(file_name, 'rb') as fd:
-                penalty_model_obj.image.put(fd)
-
-        os.remove(file_name)
+                penalty_model_obj.image = fd.read()
+            penalty_model_obj.save()
+            os.remove(file_name)
 
         return result
     else:
@@ -171,7 +172,7 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
 
 
 @app.get("/masked")
-def fetch(skip: int = 0):
+def fetch_masked(skip: int = 0):
     """pagination query param"""
     skip = skip * 10
     limit = skip + 10
@@ -187,17 +188,18 @@ def fetch(skip: int = 0):
 
 
 @app.get("/penalty")
-def fetch(skip: int = 0):
+def fetch_penalty(skip: int = 0):
     """pagination query param"""
     skip = skip * 10
     limit = skip + 10
     penalty_list = []
-    for penalty_model_obj in PenaltyModel.objects[skip:limit].order_by('-date'):
+    for penalty_model_obj1 in PenaltyModel.objects[skip:limit].order_by('-date'):      
         """limiting results to fetch from db """
         penalty_dict = dict()
-        penalty_dict["date"] = penalty_model_obj.date
-        penalty_dict["location"] = penalty_model_obj.location
-        penalty_dict["img"] = base64.b64encode(penalty_model_obj.image)
+        penalty_dict["user"] = penalty_model_obj1.user_name
+        penalty_dict["date"] = penalty_model_obj1.date
+        penalty_dict["location"] = penalty_model_obj1.location
+        penalty_dict["img"] = base64.b64encode(penalty_model_obj1.image)
         penalty_list.append(penalty_dict)
     return penalty_list
 
@@ -236,11 +238,12 @@ def penalty_user(user_name: str = 0):
     penalty_list = []
     for penalty in penalties:
         penalty_dict = dict()
+        penalty_dict["id"] = str(penalty.id)
         penalty_dict["date"] = penalty.date
         penalty_dict["location"] = penalty.location
         penalty_dict["img"] = base64.b64encode(penalty.image)
         penalty_list.append(penalty_dict)
-    return penalties
+    return penalty_list
 
 
 @app.get("/suspicious")
@@ -258,3 +261,12 @@ def fetch(skip: int = 0):
         suspicious.append(suspicious_dict)
     return suspicious
 
+
+@app.post("/remove_penalty")
+def fetch(id: str):
+    try:
+        penalty_obj= PenaltyModel.objects.get(id=id)
+        penalty_obj.delete()
+        return True
+    except PenaltyModel.DoesNotExist:
+        return False
