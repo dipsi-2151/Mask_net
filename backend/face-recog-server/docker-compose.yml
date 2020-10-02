@@ -2,7 +2,7 @@ version: '3'
 services:
     myapp:
         build: .
-        container_name: "mask-net"
+        container_name: "face_recog"
         image: ghcr.io/jainal09/mask_net:face_recog
         command: uvicorn main:app --reload --host 0.0.0.0 
         ports:
