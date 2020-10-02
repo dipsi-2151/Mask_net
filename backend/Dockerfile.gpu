@@ -1,5 +1,4 @@
 ARG UBUNTU_VERSION=18.04
-
 ARG ARCH=
 ARG CUDA=10.0
 ARG ARCH
@@ -12,20 +11,9 @@ FROM nvidia/cuda:10.0-cudnn7-devel
 SHELL ["/bin/bash", "-c"]
 # Install face recognition dependencies
 RUN apt update -y; apt install -y git cmake libsm6 libxext6 libxrender-dev
-
-
-
 # Install compilers
-
 RUN apt install -y software-properties-common
-#RUN add-apt-repository ppa:ubuntu-toolchain-r/test
-# RUN apt update -y; apt install -y gcc-6 g++-6
 RUN apt-get install -y  libopenblas-dev liblapack-dev
-
-
-
-# RUN apt-get install libnvinfer5=5.1.2-1+cuda10.0
-# RUN apt-get install libnvinfer-dev=5.1.2-1+cuda10.0
 # Configure the build for our CUDA configuration.
 ENV CI_BUILD_PYTHON python
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
@@ -68,6 +56,14 @@ RUN apt-get install -y \
     virtualenv \
     swig
 
+#Install dlib 
+RUN git clone https://github.com/jainal09/dlib.git /dlib
+RUN mkdir -p dlib/build
+
+RUN cmake -H/dlib -B/dlib/build -DDLIB_USE_CUDA=1 -DUSE_AVX_INSTRUCTIONS=1
+RUN cmake --build /dlib/build
+
+RUN cd /dlib; python3 /dlib/setup.py install
 RUN pip3 --no-cache-dir install \
     Pillow \
     h5py \
@@ -90,19 +86,9 @@ RUN pip3 --no-cache-dir install \
     blinker \
     opencv-python\
     scikit-build\
+    tensorflow-gpu==1.15.0\
     && test "${USE_PYTHON_3_NOT_2}" -eq 1 && true || ${PIP} --no-cache-dir install \
     enum34
-#Install dlib 
-
-RUN git clone https://github.com/jainal09/dlib.git /dlib
-RUN mkdir -p dlib/build
-
-RUN cmake -H/dlib -B/dlib/build -DDLIB_USE_CUDA=1 -DUSE_AVX_INSTRUCTIONS=1
-RUN cmake --build /dlib/build
-
-RUN cd /dlib; python3 /dlib/setup.py install
-RUN pip3 install tensorflow-gpu==1.15.0
-
 ADD . .
 EXPOSE 8000
 CMD uvicorn main:app --reload --host 0.0.0.0
