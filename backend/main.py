@@ -43,18 +43,21 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
         with open(file_name, 'wb') as f:
             f.write(file.file.read())
         """face recognition code """
-        face_image = face_recognition.load_image_file(file_name)
-        face_encoding = face_recognition.face_encodings(face_image)[0]
-        """face recognition code complete"""
-        binary_encoding = pickle.dumps(face_encoding)
-        user_model_obj.user_name = user_name
-        user_model_obj.encoding = binary_encoding
-        """saving data in db through model ob of user"""
-        with open(file_name, 'rb') as fd:
-            user_model_obj.image.put(fd)
-        os.remove(file_name)
-        user_model_obj.save()
-        return True
+        try:
+            face_image = face_recognition.load_image_file(file_name)
+            face_encoding = face_recognition.face_encodings(face_image)[0]
+            """face recognition code complete"""
+            binary_encoding = pickle.dumps(face_encoding)
+            user_model_obj.user_name = user_name
+            user_model_obj.encoding = binary_encoding
+            """saving data in db through model ob of user"""
+            with open(file_name, 'rb') as fd:
+                user_model_obj.image.put(fd)
+            os.remove(file_name)
+            user_model_obj.save()
+            return True
+        except IndexError:
+            return False
 
 
 @app.post("/predict/")
