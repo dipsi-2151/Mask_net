@@ -45,4 +45,5 @@ RUN pip3 --no-cache-dir install \
 RUN apt-get install -y libx11-dev libgtk-3-dev
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
 ADD . .
+ENV LANG C.UTF-8
 EXPOSE 8000

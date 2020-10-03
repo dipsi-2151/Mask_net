@@ -4,7 +4,7 @@ from Db_models.models.user import UserModel
 import os
 import globals
 import pickle
-from .face_recog_service import FaceRecog
+from face_recog_service import FaceRecog
 
 
 face_recog_obj = FaceRecog()

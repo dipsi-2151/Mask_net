@@ -5,8 +5,9 @@ from Db_models.models.suspicious import Suspicious
 from Db_models.models.user import UserModel
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
-from tensorflow.keras.models import load_model
+from tensorflow.python.keras.backend import set_session
 import tensorflow as tf
+from tensorflow.python.keras.models import load_model
 import numpy as np
 import cv2
 import os
@@ -24,15 +25,18 @@ def _save(file):
         f.write(file.file.read())
     return file_name
 
-conf = tf.ConfigProto()
-conf.gpu_options.allow_growth=True
-session = tf.Session(config=conf)
 
 # load our serialized face detector model from disk
 print("[INFO] loading face detector model...")
 prototxtPath =  "deploy.prototxt"
 weightsPath = "res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNet(prototxtPath, weightsPath)
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+sess = tf.Session(config=config)
+graph = tf.get_default_graph()
+set_session(sess)
 
 # load the face mask detector model from disk
 print("[INFO] loading face mask detector model...")
@@ -53,24 +57,20 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
         """If user_name not in db than error will be handled here """
         user_model_obj = UserModel()
         file_name = _save(file)
-        face_encoding = face_recog_obj.get_embedding(file_name)
-        uname = face_recog_obj.face_recognition(face_encoding)
-        if uname is None:
-            try:
-
-                binary_encoding = pickle.dumps(face_encoding)
-                user_model_obj.user_name = user_name
-                user_model_obj.encoding = binary_encoding
-                """saving data in db through model ob of user"""
-                with open(file_name, 'rb') as fd:
-                    user_model_obj.image.put(fd)
-                os.remove(file_name)
-                user_model_obj.save()
-                return True
-            except IndexError:
-                return False
-        else:
+        face_encoding = face_recog_obj.get_embedding(face_image=file_name)
+        if face_encoding == "No-Face":
             return False
+        else:
+            binary_encoding = pickle.dumps(face_encoding)
+            user_model_obj.user_name = user_name
+            user_model_obj.encoding = binary_encoding
+            """saving data in db through model ob of user"""
+            with open(file_name, 'rb') as fd:
+                user_model_obj.image.put(fd)
+            os.remove(file_name)
+            user_model_obj.save()
+            return True
+
 
 
 @app.post("/predict/")
@@ -118,7 +118,11 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
 
             # pass the face through the model to determine if the face
             # has a mask or not
-            (mask, withoutMask) = model.predict(face)[0]
+            global sess
+            global graph
+            with graph.as_default():
+                set_session(sess)
+                (mask, withoutMask) = model.predict(face)[0]
 
             # determine the class label and color we'll use to draw
             # the bounding box and text
@@ -153,8 +157,14 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
         if uname is None:
             """if unknown person detected than return none"""
             os.remove(file_name)
+        elif uname is False:
+            """if unknown person detected than return none"""
+            os.remove(file_name)
         else:
             print("in else")
+            print("*************")
+            print(uname)
+            print("#############")
             cv2.imwrite(file_name, image)
             penalty_model_obj = PenaltyModel()
             penalty_model_obj.user_name = uname

@@ -105,7 +105,7 @@ class FaceRecog:
         return np.linalg.norm(face_encodings - face_to_compare, axis=1)
 
 
-    def face_location(self, img, number_of_times_to_upsample=1, model="hog"):
+    def face_location(self, img, number_of_times_to_upsample=0, model="hog"):
         """
         Returns an array of bounding boxes of human faces in a image
         :param img: An image (as a numpy array)
@@ -125,11 +125,14 @@ class FaceRecog:
     def get_embedding(self, face_image):
         face_image = face_recognition.load_image_file(face_image)
         face_locations = self.face_location(face_image, model='cnn')
-        face_encoding = self.face_encodings(face_image, face_locations, model="large")[0]
+        try:
+            face_encoding = self.face_encodings(face_image, face_locations, model="large")[0]
+        except IndexError:
+            return "No-Face"
         return face_encoding
 
 
-    def face_recognition(self, face_image):
+    def face_recognition(self, face_image, encoding=False):
         embeddings = []
         for dic in globals.embeddings:
             print(dic["name"])
@@ -137,12 +140,21 @@ class FaceRecog:
         uname = None
         """if face detection occurs than try else except"""
         try:
-            face_encoding = self._get_embedding(face_image)
-            face_distances = self.face_distance1(embeddings, face_encoding)
-            for i, face_distance in enumerate(face_distances):
-                if face_distance < 0.6:
-                    user_dic = globals.embeddings[i]
-                    uname = user_dic["name"]
-                    return uname
+            face_encoding = self.get_embedding(face_image)
+            if face_encoding == "No-Face":
+                return False
+            else:
+                face_distances = self.face_distance1(embeddings, face_encoding)
+                result = dict()
+                result["encoding"] = face_encoding
+                for i, face_distance in enumerate(face_distances):
+                    if face_distance < 0.6:
+                        user_dic = globals.embeddings[i]
+                        uname = user_dic["name"]
+                        if encoding == True:
+                            result["uname"] = uname
+                            return result
+                        else:
+                            return uname
         except IndexError:
             return uname

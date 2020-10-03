@@ -2,7 +2,7 @@ version: '3'
 services:
     face-recog-inference:
         build: .
-        container_name: "face_recognition_gpu"
+        container_name: "face_recognition"
         image: ghcr.io/jainal09/face_recog:gpu
         command: uvicorn main:app --reload --host 0.0.0.0
         ports:
