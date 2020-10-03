@@ -29,8 +29,10 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
         """If user_name not in db than error will be handled here """
         user_model_obj = UserModel()
         file_name = _save(file)
-        try:
-            face_encoding = face_recog_obj.get_embedding(file_name)
+        face_encoding = face_recog_obj.get_embedding(file_name)
+        if face_encoding ==  "No-Face":
+            return False
+        else:
             binary_encoding = pickle.dumps(face_encoding)
             user_model_obj.user_name = user_name
             user_model_obj.encoding = binary_encoding
@@ -40,20 +42,28 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
             os.remove(file_name)
             user_model_obj.save()
             return True
-        except IndexError:
-            return False
+
+
 
 
 
 @app.post("/recognize")
 def signin(file: UploadFile = File(...)):
     file_name = _save(file)
+
     uname = face_recog_obj.face_recognition(file_name)
     if uname is None:
         """if unknown person detected than return none"""
         os.remove(file_name)
-        return False
+    elif uname is False:
+        """if unknown person detected than return none"""
+        os.remove(file_name)
+
     else:
+        print("in else")
+        print("*************")
+        print(uname)
+        print("#############")
         return uname
 
 
