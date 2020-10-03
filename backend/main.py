@@ -6,48 +6,27 @@ from Db_models.models.user import UserModel
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
 from tensorflow.keras.models import load_model
+import tensorflow as tf
 import numpy as np
 import cv2
 import os
 import base64
 import globals
-import face_recognition
 import pickle
 from Db_models.models.penalty import PenaltyModel
+from face_recog_server.face_recog_service import FaceRecog
 
+face_recog_obj = FaceRecog()
 
-def _get_embedding(face_image):
-    face_image = face_recognition.load_image_file(face_image)
-    face_locations = face_recognition.face_locations(face_image, model='cnn')
-    face_encoding = face_recognition.face_encodings(face_image, face_locations, model="large")[0]
-    return face_encoding
-
-
-def _face_recognition(face_image):
-    embeddings = []
-    for dic in globals.embeddings:
-        print(dic["name"])
-        embeddings.append(dic["encoding"])
-    uname = None
-    """if face detection occurs than try else except"""
-    try:
-        face_encoding = _get_embedding(face_image)
-        face_distances = face_recognition.face_distance(embeddings, face_encoding)
-        for i, face_distance in enumerate(face_distances):
-            if face_distance < 0.6:
-                user_dic = globals.embeddings[i]
-                uname = user_dic["name"]
-                return uname
-    except IndexError:
-            return uname
-        
 def _save(file):
     file_name = file.filename
     with open(file_name, 'wb') as f:
         f.write(file.file.read())
     return file_name
 
-
+conf = tf.ConfigProto()
+conf.gpu_options.allow_growth=True
+session = tf.Session(config=conf)
 
 # load our serialized face detector model from disk
 print("[INFO] loading face detector model...")
@@ -64,27 +43,33 @@ global_init()
 for user in UserModel.objects:
     globals.add_to_embeddings(username=user.user_name, encoding=pickle.loads(user.encoding))
 
+
 @app.post("/signup/")
 def register(file: UploadFile = File(...), user_name: str = Form(...)):
     try:
-        returning_user_object= UserModel.objects.get(user_name=user_name)
+        UserModel.objects.get(user_name=user_name)
         return False
     except UserModel.DoesNotExist:
         """If user_name not in db than error will be handled here """
         user_model_obj = UserModel()
         file_name = _save(file)
-        try:
-            face_encoding = _get_embedding(file_name)
-            binary_encoding = pickle.dumps(face_encoding)
-            user_model_obj.user_name = user_name
-            user_model_obj.encoding = binary_encoding
-            """saving data in db through model ob of user"""
-            with open(file_name, 'rb') as fd:
-                user_model_obj.image.put(fd)
-            os.remove(file_name)
-            user_model_obj.save()
-            return True
-        except IndexError:
+        face_encoding = face_recog_obj.get_embedding(file_name)
+        uname = face_recog_obj.face_recognition(face_encoding)
+        if uname is None:
+            try:
+
+                binary_encoding = pickle.dumps(face_encoding)
+                user_model_obj.user_name = user_name
+                user_model_obj.encoding = binary_encoding
+                """saving data in db through model ob of user"""
+                with open(file_name, 'rb') as fd:
+                    user_model_obj.image.put(fd)
+                os.remove(file_name)
+                user_model_obj.save()
+                return True
+            except IndexError:
+                return False
+        else:
             return False
 
 
@@ -164,7 +149,7 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
 
 
     elif result == "No Mask": 
-        uname = _face_recognition(file_name)
+        uname = face_recog_obj.face_recognition(file_name)
         if uname is None:
             """if unknown person detected than return none"""
             os.remove(file_name)
@@ -228,7 +213,7 @@ def fetch_penalty(skip: int = 0):
 @app.post("/signin")
 def signin(file: UploadFile = File(...)):
     file_name = _save(file)
-    uname = _face_recognition(file_name)
+    uname =face_recog_obj.face_recognition(file_name)
     if uname is None:
         """if unknown person detected than return none"""
         os.remove(file_name)
