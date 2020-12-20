@@ -5,15 +5,25 @@ from Db_models.models.suspicious import Suspicious
 from Db_models.models.user import UserModel
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from tensorflow.keras.preprocessing.image import img_to_array
-from tensorflow.keras.models import load_model
+from tensorflow.python.keras.backend import set_session
+import tensorflow as tf
+from tensorflow.python.keras.models import load_model
 import numpy as np
 import cv2
 import os
 import base64
 import globals
-import face_recognition
 import pickle
 from Db_models.models.penalty import PenaltyModel
+from face_recog_server.face_recog_service import FaceRecog
+
+face_recog_obj = FaceRecog()
+
+def _save(file):
+    file_name = file.filename
+    with open(file_name, 'wb') as f:
+        f.write(file.file.read())
+    return file_name
 
 
 # load our serialized face detector model from disk
@@ -21,6 +31,12 @@ print("[INFO] loading face detector model...")
 prototxtPath =  "deploy.prototxt"
 weightsPath = "res10_300x300_ssd_iter_140000.caffemodel"
 net = cv2.dnn.readNet(prototxtPath, weightsPath)
+
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+sess = tf.Session(config=config)
+graph = tf.get_default_graph()
+set_session(sess)
 
 # load the face mask detector model from disk
 print("[INFO] loading face mask detector model...")
@@ -31,22 +47,20 @@ global_init()
 for user in UserModel.objects:
     globals.add_to_embeddings(username=user.user_name, encoding=pickle.loads(user.encoding))
 
+
 @app.post("/signup/")
 def register(file: UploadFile = File(...), user_name: str = Form(...)):
     try:
-        returning_user_object= UserModel.objects.get(user_name=user_name)
+        UserModel.objects.get(user_name=user_name)
         return False
     except UserModel.DoesNotExist:
         """If user_name not in db than error will be handled here """
         user_model_obj = UserModel()
-        file_name = file.filename
-        with open(file_name, 'wb') as f:
-            f.write(file.file.read())
-        """face recognition code """
-        try:
-            face_image = face_recognition.load_image_file(file_name)
-            face_encoding = face_recognition.face_encodings(face_image)[0]
-            """face recognition code complete"""
+        file_name = _save(file)
+        face_encoding = face_recog_obj.get_embedding(face_image=file_name)
+        if face_encoding == "No-Face":
+            return False
+        else:
             binary_encoding = pickle.dumps(face_encoding)
             user_model_obj.user_name = user_name
             user_model_obj.encoding = binary_encoding
@@ -56,15 +70,12 @@ def register(file: UploadFile = File(...), user_name: str = Form(...)):
             os.remove(file_name)
             user_model_obj.save()
             return True
-        except IndexError:
-            return False
+
 
 
 @app.post("/predict/")
 def predict(file: UploadFile = File(...), location: str = Form(...)):
-    file_name = file.filename
-    with open(file_name, 'wb') as f:
-        f.write(file.file.read())
+    file_name = _save(file)
     # load the input image from disk, clone it, and grab the image spatial
     # dimensions
     image = cv2.imread(file_name)
@@ -107,7 +118,11 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
 
             # pass the face through the model to determine if the face
             # has a mask or not
-            (mask, withoutMask) = model.predict(face)[0]
+            global sess
+            global graph
+            with graph.as_default():
+                set_session(sess)
+                (mask, withoutMask) = model.predict(face)[0]
 
             # determine the class label and color we'll use to draw
             # the bounding box and text
@@ -126,8 +141,8 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
             result = "suspicious"
             break
 
-    cv2.imwrite(file_name, image)
     if result == "Mask":
+        cv2.imwrite(file_name, image)
         mask_model_obj = Masked()
         with open(file_name, 'rb') as fd:
             mask_model_obj.image= fd.read()
@@ -135,26 +150,22 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
         mask_model_obj.location = location
         mask_model_obj.save()
         return result
-    elif result == "No Mask":
-        embeddings = []
-        for dic in globals.embeddings:
-            print(dic["name"])
-            embeddings.append(dic["encoding"])
-        face_image = face_recognition.load_image_file(file_name)
-        uname = None
-        """if face detection occurs than try else except"""
-        face_encoding = face_recognition.face_encodings(face_image)[0]
-        face_distances = face_recognition.face_distance(embeddings, face_encoding)
-        for i, face_distance in enumerate(face_distances):
-            if face_distance < 0.6:
-                user_dic = globals.embeddings[i]
-                uname = user_dic["name"]
 
+
+    elif result == "No Mask": 
+        uname = face_recog_obj.face_recognition(file_name)
         if uname is None:
+            """if unknown person detected than return none"""
+            os.remove(file_name)
+        elif uname is False:
             """if unknown person detected than return none"""
             os.remove(file_name)
         else:
             print("in else")
+            print("*************")
+            print(uname)
+            print("#############")
+            cv2.imwrite(file_name, image)
             penalty_model_obj = PenaltyModel()
             penalty_model_obj.user_name = uname
             penalty_model_obj.location = location
@@ -164,6 +175,8 @@ def predict(file: UploadFile = File(...), location: str = Form(...)):
             os.remove(file_name)
 
         return result
+        
+        
     else:
         suspicious_model_obj = Suspicious()
         with open(file_name, 'rb') as fd:
@@ -209,24 +222,8 @@ def fetch_penalty(skip: int = 0):
 
 @app.post("/signin")
 def signin(file: UploadFile = File(...)):
-    file_name = file.filename
-    with open(file_name, 'wb') as f:
-        f.write(file.file.read())
-    embeddings = []
-    for dic in globals.embeddings:
-        embeddings.append(dic["encoding"])
-    face_image = face_recognition.load_image_file(file_name)
-
-    uname = None
-    """if face detection occurs than try else except"""
-    print(uname)
-    face_encoding = face_recognition.face_encodings(face_image)[0]
-    face_distances = face_recognition.face_distance(embeddings, face_encoding)
-    for i, face_distance in enumerate(face_distances):
-        if face_distance < 0.6:
-            user_dic = globals.embeddings[i]
-            uname = user_dic["name"]
-
+    file_name = _save(file)
+    uname =face_recog_obj.face_recognition(file_name)
     if uname is None:
         """if unknown person detected than return none"""
         os.remove(file_name)
