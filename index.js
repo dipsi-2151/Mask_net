@@ -62,3 +62,4 @@ function Next(resp_type) {
   console.log(page);
   GenerateTable(page, resp_type);
 }
+
