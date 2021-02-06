@@ -22,7 +22,7 @@ GPIO.output(TRIG, False)
 
 time.sleep(2)
 
-url = "http://127.0.0.1:8000/predict/"
+url = "http://52.188.166.61:7000/predict/"
 
 
 try:
@@ -53,7 +53,7 @@ try:
             print("pic captured")
             payload = {'location': 'hall'}
             response = requests.request("POST", url, data = payload, files = files)
-            # """ response can be "Mask", "suspicious", "No Mask" """
+            """ response can be "Mask", "suspicious", "No Mask" """
             print("response sent")
             result = str(response.text.encode('utf8'))
             print(result)
