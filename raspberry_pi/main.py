@@ -1,28 +1,10 @@
-# import requests
-
-# url = "http://127.0.0.1:8000/predict/"
-
-# payload = {'location': 'hall'}
-# files = [
-#   ('file', open(image,'rb'))
-# ]
-
-
-# response = requests.request("POST", url, data = payload, files = files)
-
-# response = str(response.text.encode('utf8'))
-# print(response)
-
-# """ response can be "Mask", "suspicious", "No Mask" """
-
-
-
 #!/usr/bin/env python
 # -*- coding: utf-8 -*- 
 import requests
 import RPi.GPIO as GPIO
 import time
 import subprocess
+import simpleaudio as sa
 
 
 GPIO.setmode(GPIO.BOARD)
@@ -40,7 +22,8 @@ GPIO.output(TRIG, False)
 
 time.sleep(2)
 
-url = "http://192.168.0.7:7000/post/?location=hall"
+url = "http://127.0.0.1:8000/predict/"
+
 
 try:
     print("System Started")
@@ -63,23 +46,44 @@ try:
 
         if distance <= 45:
             print("in distance")
-            GPIO.output(12, GPIO.HIGH)
             subprocess.call(["fswebcam", "-r", "640×480", "image2.jpg"])
             files = [
                 ('file', open("image2.jpg", 'rb'))
             ]
             print("pic captured")
-            response = requests.request("POST", url, files=files)
+            payload = {'location': 'hall'}
+            response = requests.request("POST", url, data = payload, files = files)
+            # """ response can be "Mask", "suspicious", "No Mask" """
             print("response sent")
-            print(response.text.encode('utf8'))
-            GPIO.output(12, GPIO.LOW)
-            print("green red light low")
-            GPIO.output(11, GPIO.HIGH)
-            print("green light high")
-            time.sleep(4)
-            GPIO.output(11, GPIO.LOW)
-            print("green light low")
-            print("out of loop")
+            result = str(response.text.encode('utf8'))
+            print(result)
+            if result == "Mask":
+                """Mased person"""
+                GPIO.output(11, GPIO.HIGH)
+                print("green light high")
+                wave_obj = sa.WaveObject.from_wave_file('ok.wav')
+                play_obj = wave_obj.play()
+                play_obj.wait_done()
+                GPIO.output(11, GPIO.LOW)
+                print("green light low")
+            elif result == "suspicious":
+                """Suspicous person """
+                GPIO.output(12, GPIO.HIGH)
+                print("red light high")
+                wave_obj = sa.WaveObject.from_wave_file('susp.wav')
+                play_obj = wave_obj.play()
+                play_obj.wait_done()
+                GPIO.output(12, GPIO.LOW)
+                print("red light low")
+            else:
+                """No masked Person"""
+                GPIO.output(12, GPIO.HIGH)
+                print("red light high")
+                wave_obj = sa.WaveObject.from_wave_file('no_mask.wav')
+                play_obj = wave_obj.play()
+                play_obj.wait_done()
+                GPIO.output(12, GPIO.LOW)
+                print("red light low")
 
 except KeyboardInterrupt:
     GPIO.cleanup()
