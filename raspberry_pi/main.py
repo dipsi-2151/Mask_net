@@ -55,7 +55,8 @@ try:
             response = requests.request("POST", url, data = payload, files = files)
             """ response can be "Mask", "suspicious", "No Mask" """
             print("response sent")
-            result = str(response.text.encode('utf8'))
+            result = str(response.text)
+            result = result[1:-1]
             print(result)
             if result == "Mask":
                 """Mased person"""
