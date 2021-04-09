@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:weightSum="7"
+    tools:context=".MainActivity"
+    android:background="@drawable/backgroundcolour">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="3"
+        android:orientation="vertical"
+        android:weightSum="1">
+
+        <ImageView
+            android:id="@+id/imageView1"
+            android:layout_width="250dp"
+            android:layout_height="250dp"
+            android:src="@drawable/camera"
+            android:layout_marginLeft="80sp"
+            android:layout_marginTop="50sp"
+            android:layout_marginRight="5sp"
+            android:scaleType="centerCrop">
+
+        </ImageView>
+
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <Button
+            android:id="@+id/bttakeimg"
+            android:layout_width="313dp"
+            android:layout_height="match_parent"
+            android:layout_marginLeft="50sp"
+            android:layout_marginTop="40dp"
+            android:layout_marginRight="50sp"
+            android:background="#d3d3d3"
+            android:text="take photo"
+            android:textSize="20sp"></Button>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal"
+        android:weightSum="2">
+
+
+
+        <Button
+            android:id="@+id/btsignin"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent"
+            android:textSize="20sp"
+            android:layout_marginTop="40dp"
+            android:layout_marginLeft="160dp"
+            android:background="#d3d3d3"
+            android:layout_marginRight="40sp"
+            android:text="LOGIN">
+
+        </Button>
+    </LinearLayout>
+
+</LinearLayout>
